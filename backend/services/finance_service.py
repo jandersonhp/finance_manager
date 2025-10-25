@@ -140,3 +140,55 @@ class FinanceService:
             self.save_data()
             return True
         return False
+    # ... (código anterior mantido)
+
+    # Novos métodos para edição de cartões
+    def update_card_limit(self, month_year: str, card_index: int, new_limit: float) -> bool:
+        if month_year in self.cards and 0 <= card_index < len(self.cards[month_year]):
+            self.cards[month_year][card_index].limit = new_limit
+            self.save_data()
+            return True
+        return False
+    
+    def update_card_due_date(self, month_year: str, card_index: int, new_due_date: str) -> bool:
+        if month_year in self.cards and 0 <= card_index < len(self.cards[month_year]):
+            self.cards[month_year][card_index].due_date = new_due_date
+            self.save_data()
+            return True
+        return False
+    
+    def delete_card(self, month_year: str, card_index: int) -> bool:
+        if month_year in self.cards and 0 <= card_index < len(self.cards[month_year]):
+            del self.cards[month_year][card_index]
+            self.save_data()
+            return True
+        return False
+    
+    # Novos métodos para edição de despesas
+    def update_expense_amount(self, month_year: str, expense_index: int, new_amount: float) -> bool:
+        if month_year in self.expenses and 0 <= expense_index < len(self.expenses[month_year]):
+            self.expenses[month_year][expense_index].amount = new_amount
+            self.save_data()
+            return True
+        return False
+    
+    def update_expense_due_date(self, month_year: str, expense_index: int, new_due_date: str) -> bool:
+        if month_year in self.expenses and 0 <= expense_index < len(self.expenses[month_year]):
+            self.expenses[month_year][expense_index].due_date = new_due_date
+            self.save_data()
+            return True
+        return False
+    
+    def update_expense_description(self, month_year: str, expense_index: int, new_description: str) -> bool:
+        if month_year in self.expenses and 0 <= expense_index < len(self.expenses[month_year]):
+            self.expenses[month_year][expense_index].description = new_description
+            self.save_data()
+            return True
+        return False
+    
+    def delete_expense(self, month_year: str, expense_index: int) -> bool:
+        if month_year in self.expenses and 0 <= expense_index < len(self.expenses[month_year]):
+            del self.expenses[month_year][expense_index]
+            self.save_data()
+            return True
+        return False
