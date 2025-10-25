@@ -6,7 +6,7 @@ from backend.services.finance_service import FinanceService
 class FinanceGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Gerenciador Financeiro - Backend Refatorado")
+        self.root.title("Gerenciador Financeiro - Sistema Integrado")
         self.root.geometry("800x600")
         
         # Injeção de dependência - Service do backend
@@ -60,25 +60,7 @@ class FinanceGUI:
         self.cards_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.cards_frame, text="Cartões")
         
-        # Controles de mês/ano
-        month_frame = ttk.Frame(self.cards_frame)
-        month_frame.pack(pady=10)
-        
-        ttk.Label(month_frame, text="Mês/Ano:").pack(side='left')
-        
-        # Combobox com meses dinâmicos (não limitado aos registrados)
-        self.cards_month_var = tk.StringVar(value=datetime.now().strftime("%Y-%m"))
-        self.cards_month_combo = ttk.Combobox(month_frame, textvariable=self.cards_month_var, state="normal")
-        self.cards_month_combo.pack(side='left', padx=5)
-        self.cards_month_combo.bind('<<ComboboxSelected>>', self.on_cards_month_changed)
-        self.cards_month_combo.bind('<KeyRelease>', self.on_cards_month_key)
-        self.cards_month_combo.bind('<FocusOut>', self.on_cards_month_focus_out)
-        
-        # Botão para ir para o mês digitado
-        ttk.Button(month_frame, text="Ir", command=self.update_cards_display).pack(side='left', padx=5)
-        ttk.Button(month_frame, text="Adicionar Cartão", command=self.add_card).pack(side='left', padx=10)
-        
-        # Treeview para cartões
+        # Treeview para cartões (agora cartões são fixos, não por mês)
         columns = ('Cartão', 'Limite Total', 'Limite Usado', 'Disponível', 'Data Fatura')
         self.cards_tree = ttk.Treeview(self.cards_frame, columns=columns, show='headings', height=12)
         
@@ -87,6 +69,13 @@ class FinanceGUI:
             self.cards_tree.column(col, width=100)
         
         self.cards_tree.pack(fill='both', expand=True, padx=10, pady=5)
+        
+        # Botões
+        button_frame = ttk.Frame(self.cards_frame)
+        button_frame.pack(pady=10)
+        
+        ttk.Button(button_frame, text="Adicionar Cartão", command=self.add_card).pack(side='left', padx=5)
+        ttk.Button(button_frame, text="Pagar Fatura", command=self.pay_card_invoice).pack(side='left', padx=5)
         
         # Menu de contexto para cartões
         self.cards_context_menu = tk.Menu(self.root, tearoff=0)
@@ -102,22 +91,32 @@ class FinanceGUI:
         self.expenses_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.expenses_frame, text="Despesas Mensais")
         
-        # Controles de mês/ano
+        # Controles de mês/ano COM SELECTOR PERSONALIZADO
         month_frame = ttk.Frame(self.expenses_frame)
         month_frame.pack(pady=10)
         
         ttk.Label(month_frame, text="Mês/Ano:").pack(side='left')
         
-        # Combobox com meses dinâmicos
-        self.expenses_month_var = tk.StringVar(value=datetime.now().strftime("%Y-%m"))
-        self.expenses_month_combo = ttk.Combobox(month_frame, textvariable=self.expenses_month_var, state="normal")
-        self.expenses_month_combo.pack(side='left', padx=5)
-        self.expenses_month_combo.bind('<<ComboboxSelected>>', self.on_expenses_month_changed)
-        self.expenses_month_combo.bind('<KeyRelease>', self.on_expenses_month_key)
-        self.expenses_month_combo.bind('<FocusOut>', self.on_expenses_month_focus_out)
+        # Selector de mês e ano
+        selector_frame = ttk.Frame(month_frame)
+        selector_frame.pack(side='left', padx=5)
         
-        # Botão para ir para o mês digitado
-        ttk.Button(month_frame, text="Ir", command=self.update_expenses_display).pack(side='left', padx=5)
+        # Ano
+        self.year_var = tk.StringVar(value=str(datetime.now().year))
+        year_combo = ttk.Combobox(selector_frame, textvariable=self.year_var, width=6, state="readonly")
+        year_combo['values'] = [str(year) for year in range(2020, 2031)]
+        year_combo.pack(side='left')
+        year_combo.bind('<<ComboboxSelected>>', self.on_month_year_changed)
+        
+        ttk.Label(selector_frame, text="/").pack(side='left')
+        
+        # Mês
+        self.month_var = tk.StringVar(value=f"{datetime.now().month:02d}")
+        month_combo = ttk.Combobox(selector_frame, textvariable=self.month_var, width=3, state="readonly")
+        month_combo['values'] = [f"{i:02d}" for i in range(1, 13)]
+        month_combo.pack(side='left')
+        month_combo.bind('<<ComboboxSelected>>', self.on_month_year_changed)
+        
         ttk.Button(month_frame, text="Adicionar Despesa", command=self.add_monthly_expense).pack(side='left', padx=10)
         
         # Treeview para despesas
@@ -143,91 +142,15 @@ class FinanceGUI:
         
         self.expenses_tree.bind("<Button-3>", self.show_expenses_context_menu)
     
-    def get_month_year_suggestions(self):
-        """Retorna sugestões de meses/anos (últimos 24 meses + meses com dados)"""
-        suggestions = set()
-        
-        # Últimos 24 meses
-        current = datetime.now()
-        for i in range(24):
-            date = current - timedelta(days=30*i)
-            suggestions.add(date.strftime("%Y-%m"))
-        
-        # Meses que já têm dados registrados
-        suggestions.update(self.finance_service.cards.keys())
-        suggestions.update(self.finance_service.expenses.keys())
-        
-        return sorted(suggestions, reverse=True)
+    def get_current_month_year(self):
+        """Retorna o mês/ano atual no formato YYYY-MM"""
+        return f"{self.year_var.get()}-{self.month_var.get()}"
     
-    def update_month_comboboxes(self):
-        """Atualiza as sugestões dos comboboxes"""
-        suggestions = self.get_month_year_suggestions()
-        
-        self.cards_month_combo['values'] = suggestions
-        self.expenses_month_combo['values'] = suggestions
-    
-    def on_cards_month_key(self, event):
-        """Atualiza sugestões quando digita no combobox de cartões"""
-        self.update_month_comboboxes()
-    
-    def on_cards_month_focus_out(self, event):
-        """Valida o formato do mês quando perde o foco"""
-        self.validate_month_format(self.cards_month_var)
-    
-    def on_expenses_month_key(self, event):
-        """Atualiza sugestões quando digita no combobox de despesas"""
-        self.update_month_comboboxes()
-    
-    def on_expenses_month_focus_out(self, event):
-        """Valida o formato do mês quando perde o foco"""
-        self.validate_month_format(self.expenses_month_var)
-    
-    def validate_month_format(self, month_var):
-        """Valida se o formato do mês/ano está correto"""
-        value = month_var.get()
-        try:
-            datetime.strptime(value + "-01", "%Y-%m-%d")
-            return True
-        except ValueError:
-            # Se formato inválido, volta para o mês atual
-            month_var.set(datetime.now().strftime("%Y-%m"))
-            return False
-    
-    def show_cards_context_menu(self, event):
-        """Mostra menu de contexto para cartões"""
-        item = self.cards_tree.identify_row(event.y)
-        if item:
-            self.cards_tree.selection_set(item)
-            self.selected_card_item = item
-            self.cards_context_menu.post(event.x_root, event.y_root)
-    
-    def show_expenses_context_menu(self, event):
-        """Mostra menu de contexto para despesas"""
-        item = self.expenses_tree.identify_row(event.y)
-        if item:
-            self.expenses_tree.selection_set(item)
-            self.selected_expense_item = item
-            self.update_expenses_context_menu()
-            self.expenses_context_menu.post(event.x_root, event.y_root)
-    
-    def update_expenses_context_menu(self):
-        """Atualiza o menu de contexto baseado no status da despesa"""
-        if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
-            expenses = self.finance_service.get_expenses(month_year)
-            item_index = int(self.selected_expense_item)
-            
-            if 0 <= item_index < len(expenses):
-                expense = expenses[item_index]
-                
-                # Atualiza labels do menu baseado no status
-                if expense.paid:
-                    self.expenses_context_menu.entryconfig(0, label="Marcar como Não Paga")
-                else:
-                    self.expenses_context_menu.entryconfig(0, label="Marcar como Paga")
+    def on_month_year_changed(self, event=None):
+        """Quando mês ou ano é alterado"""
+        self.update_expenses_display()
     
     def update_displays(self):
-        self.update_month_comboboxes()
         self.update_wallet_display()
         self.update_cards_display()
         self.update_expenses_display()
@@ -253,8 +176,7 @@ class FinanceGUI:
         for item in self.cards_tree.get_children():
             self.cards_tree.delete(item)
         
-        month_year = self.cards_month_var.get()
-        cards = self.finance_service.get_cards(month_year)
+        cards = self.finance_service.get_cards()
         
         for i, card in enumerate(cards):
             self.cards_tree.insert('', 'end', iid=i, values=(
@@ -269,7 +191,7 @@ class FinanceGUI:
         for item in self.expenses_tree.get_children():
             self.expenses_tree.delete(item)
         
-        month_year = self.expenses_month_var.get()
+        month_year = self.get_current_month_year()
         expenses = self.finance_service.get_expenses(month_year)
         
         for i, expense in enumerate(expenses):
@@ -337,55 +259,108 @@ class FinanceGUI:
         if name:
             limit = simpledialog.askfloat("Novo Cartão", "Limite total:")
             if limit:
-                due_date = simpledialog.askstring("Novo Cartão", "Data da fatura (dd/mm):")
-                if due_date:
-                    month_year = self.cards_month_var.get()
-                    success = self.finance_service.add_card(month_year, name, limit, due_date)
+                # Janela para selecionar dia da fatura
+                due_date_window = tk.Toplevel(self.root)
+                due_date_window.title("Selecionar Dia da Fatura")
+                due_date_window.geometry("300x150")
+                
+                ttk.Label(due_date_window, text="Dia da fatura:").pack(pady=10)
+                
+                day_frame = ttk.Frame(due_date_window)
+                day_frame.pack(pady=5)
+                
+                day_var = tk.StringVar(value="10")
+                day_combo = ttk.Combobox(day_frame, textvariable=day_var, width=5, state="readonly")
+                day_combo['values'] = [f"{i:02d}" for i in range(1, 32)]
+                day_combo.pack(side='left', padx=5)
+                
+                ttk.Label(day_frame, text="/mm").pack(side='left')
+                
+                def confirm_due_date():
+                    due_date = f"{day_var.get()}/mm"  # Formato dd/mm
+                    due_date_window.destroy()
+                    success = self.finance_service.add_card(name, limit, due_date)
                     if success:
                         self.update_cards_display()
                         messagebox.showinfo("Sucesso", "Cartão adicionado com sucesso!")
                     else:
                         messagebox.showerror("Erro", "Erro ao adicionar cartão!")
+                
+                ttk.Button(due_date_window, text="Confirmar", command=confirm_due_date).pack(pady=10)
+    
+    def pay_card_invoice(self):
+        """Paga fatura do cartão selecionado"""
+        selection = self.cards_tree.selection()
+        if selection:
+            card_index = int(selection[0])
+            card = self.finance_service.get_cards()[card_index]
+            
+            if card.used == 0:
+                messagebox.showinfo("Info", "Não há fatura para pagar!")
+                return
+            
+            confirm = messagebox.askyesno(
+                "Confirmar Pagamento", 
+                f"Pagar fatura de R$ {card.used:,.2f} do cartão {card.name}?"
+            )
+            
+            if confirm:
+                success = self.finance_service.pay_card_invoice(card_index)
+                if success:
+                    self.update_cards_display()
+                    self.update_wallet_display()
+                    # Atualiza despesas do mês atual também
+                    self.update_expenses_display()
+                    messagebox.showinfo("Sucesso", "Fatura paga com sucesso!")
+                else:
+                    messagebox.showerror("Erro", "Saldo insuficiente para pagar a fatura!")
+    
+    def show_cards_context_menu(self, event):
+        """Mostra menu de contexto para cartões"""
+        item = self.cards_tree.identify_row(event.y)
+        if item:
+            self.cards_tree.selection_set(item)
+            self.selected_card_item = item
+            self.cards_context_menu.post(event.x_root, event.y_root)
     
     def edit_card_used(self):
-        """Edita o limite usado do cartão"""
+        """Edita o limite usado do cartão e sincroniza com despesas"""
         if hasattr(self, 'selected_card_item'):
-            month_year = self.cards_month_var.get()
-            cards = self.finance_service.get_cards(month_year)
-            item_index = int(self.selected_card_item)
+            card_index = int(self.selected_card_item)
+            cards = self.finance_service.get_cards()
             
-            if 0 <= item_index < len(cards):
-                card = cards[item_index]
+            if 0 <= card_index < len(cards):
+                card = cards[card_index]
                 new_used = simpledialog.askfloat(
                     "Editar Limite Usado", 
                     f"Limite usado para {card.name}:", 
                     initialvalue=card.used
                 )
                 if new_used is not None and new_used >= 0:
-                    success = self.finance_service.update_card_usage(month_year, item_index, new_used)
+                    month_year = self.get_current_month_year()
+                    success = self.finance_service.update_card_usage(card_index, new_used, month_year)
                     if success:
                         self.update_cards_display()
-                        messagebox.showinfo("Sucesso", "Limite usado atualizado!")
+                        self.update_expenses_display()
+                        messagebox.showinfo("Sucesso", "Limite usado atualizado e despesa sincronizada!")
                     else:
                         messagebox.showerror("Erro", "Erro ao atualizar limite usado!")
     
     def edit_card_limit(self):
         """Edita o limite total do cartão"""
         if hasattr(self, 'selected_card_item'):
-            month_year = self.cards_month_var.get()
-            cards = self.finance_service.get_cards(month_year)
-            item_index = int(self.selected_card_item)
+            card_index = int(self.selected_card_item)
+            cards = self.finance_service.get_cards()
             
-            if 0 <= item_index < len(cards):
-                card = cards[item_index]
+            if 0 <= card_index < len(cards):
+                card = cards[card_index]
                 new_limit = simpledialog.askfloat(
                     "Editar Limite Total", 
                     f"Limite total para {card.name}:", 
                     initialvalue=card.limit
                 )
                 if new_limit is not None and new_limit > 0:
-                    # Para atualizar o limite, precisamos recriar o cartão
-                    success = self.finance_service.update_card_limit(month_year, item_index, new_limit)
+                    success = self.finance_service.update_card_limit(card_index, new_limit)
                     if success:
                         self.update_cards_display()
                         messagebox.showinfo("Sucesso", "Limite total atualizado!")
@@ -395,40 +370,57 @@ class FinanceGUI:
     def edit_card_due_date(self):
         """Edita a data da fatura do cartão"""
         if hasattr(self, 'selected_card_item'):
-            month_year = self.cards_month_var.get()
-            cards = self.finance_service.get_cards(month_year)
-            item_index = int(self.selected_card_item)
+            card_index = int(self.selected_card_item)
+            cards = self.finance_service.get_cards()
             
-            if 0 <= item_index < len(cards):
-                card = cards[item_index]
-                new_due_date = simpledialog.askstring(
-                    "Editar Data da Fatura", 
-                    f"Data da fatura para {card.name} (dd/mm):", 
-                    initialvalue=card.due_date
-                )
-                if new_due_date:
-                    success = self.finance_service.update_card_due_date(month_year, item_index, new_due_date)
+            if 0 <= card_index < len(cards):
+                card = cards[card_index]
+                
+                # Extrai o dia atual da data (formato dd/mm)
+                current_day = card.due_date.split('/')[0] if '/' in card.due_date else "10"
+                
+                due_date_window = tk.Toplevel(self.root)
+                due_date_window.title("Editar Dia da Fatura")
+                due_date_window.geometry("300x150")
+                
+                ttk.Label(due_date_window, text="Novo dia da fatura:").pack(pady=10)
+                
+                day_frame = ttk.Frame(due_date_window)
+                day_frame.pack(pady=5)
+                
+                day_var = tk.StringVar(value=current_day)
+                day_combo = ttk.Combobox(day_frame, textvariable=day_var, width=5, state="readonly")
+                day_combo['values'] = [f"{i:02d}" for i in range(1, 32)]
+                day_combo.pack(side='left', padx=5)
+                
+                ttk.Label(day_frame, text="/mm").pack(side='left')
+                
+                def confirm_new_due_date():
+                    new_due_date = f"{day_var.get()}/mm"
+                    due_date_window.destroy()
+                    success = self.finance_service.update_card_due_date(card_index, new_due_date)
                     if success:
                         self.update_cards_display()
                         messagebox.showinfo("Sucesso", "Data da fatura atualizada!")
                     else:
                         messagebox.showerror("Erro", "Erro ao atualizar data da fatura!")
+                
+                ttk.Button(due_date_window, text="Confirmar", command=confirm_new_due_date).pack(pady=10)
     
     def delete_card(self):
         """Exclui um cartão"""
         if hasattr(self, 'selected_card_item'):
-            month_year = self.cards_month_var.get()
-            cards = self.finance_service.get_cards(month_year)
-            item_index = int(self.selected_card_item)
+            card_index = int(self.selected_card_item)
+            cards = self.finance_service.get_cards()
             
-            if 0 <= item_index < len(cards):
-                card = cards[item_index]
+            if 0 <= card_index < len(cards):
+                card = cards[card_index]
                 confirm = messagebox.askyesno(
                     "Confirmar Exclusão", 
                     f"Tem certeza que deseja excluir o cartão {card.name}?"
                 )
                 if confirm:
-                    success = self.finance_service.delete_card(month_year, item_index)
+                    success = self.finance_service.delete_card(card_index)
                     if success:
                         self.update_cards_display()
                         messagebox.showinfo("Sucesso", "Cartão excluído!")
@@ -440,33 +432,81 @@ class FinanceGUI:
         if description:
             amount = simpledialog.askfloat("Nova Despesa", "Valor:")
             if amount:
-                due_date = simpledialog.askstring("Nova Despesa", "Data de vencimento (dd/mm):")
-                if due_date:
-                    month_year = self.expenses_month_var.get()
+                # Janela para selecionar dia do vencimento
+                due_date_window = tk.Toplevel(self.root)
+                due_date_window.title("Selecionar Dia do Vencimento")
+                due_date_window.geometry("300x150")
+                
+                ttk.Label(due_date_window, text="Dia do vencimento:").pack(pady=10)
+                
+                day_frame = ttk.Frame(due_date_window)
+                day_frame.pack(pady=5)
+                
+                day_var = tk.StringVar(value="10")
+                day_combo = ttk.Combobox(day_frame, textvariable=day_var, width=5, state="readonly")
+                day_combo['values'] = [f"{i:02d}" for i in range(1, 32)]
+                day_combo.pack(side='left', padx=5)
+                
+                ttk.Label(day_frame, text="/mm").pack(side='left')
+                
+                def confirm_due_date():
+                    due_date = f"{day_var.get()}/mm"
+                    due_date_window.destroy()
+                    month_year = self.get_current_month_year()
                     success = self.finance_service.add_expense_monthly(month_year, description, amount, due_date)
                     if success:
                         self.update_expenses_display()
                         messagebox.showinfo("Sucesso", "Despesa adicionada com sucesso!")
                     else:
                         messagebox.showerror("Erro", "Erro ao adicionar despesa!")
+                
+                ttk.Button(due_date_window, text="Confirmar", command=confirm_due_date).pack(pady=10)
+    
+    def show_expenses_context_menu(self, event):
+        """Mostra menu de contexto para despesas"""
+        item = self.expenses_tree.identify_row(event.y)
+        if item:
+            self.expenses_tree.selection_set(item)
+            self.selected_expense_item = item
+            self.update_expenses_context_menu()
+            self.expenses_context_menu.post(event.x_root, event.y_root)
+    
+    def update_expenses_context_menu(self):
+        """Atualiza o menu de contexto baseado no status da despesa"""
+        if hasattr(self, 'selected_expense_item'):
+            month_year = self.get_current_month_year()
+            expenses = self.finance_service.get_expenses(month_year)
+            item_index = int(self.selected_expense_item)
+            
+            if 0 <= item_index < len(expenses):
+                expense = expenses[item_index]
+                
+                # Atualiza labels do menu baseado no status
+                if expense.paid:
+                    self.expenses_context_menu.entryconfig(0, label="Marcar como Não Paga")
+                    self.expenses_context_menu.entryconfig(1, label="Marcar como Paga")
+                else:
+                    self.expenses_context_menu.entryconfig(0, label="Marcar como Paga")
+                    self.expenses_context_menu.entryconfig(1, label="Marcar como Não Paga")
     
     def toggle_expense_paid(self):
-        """Alterna entre pago/não pago"""
+        """Alterna status da despesa e atualiza carteira"""
         if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
+            month_year = self.get_current_month_year()
             item_index = int(self.selected_expense_item)
             
             success = self.finance_service.toggle_expense_paid(month_year, item_index)
             if success:
                 self.update_expenses_display()
-                messagebox.showinfo("Sucesso", "Status da despesa atualizado!")
+                self.update_wallet_display()
+                messagebox.showinfo("Sucesso", "Status da despesa atualizado e carteira sincronizada!")
             else:
-                messagebox.showerror("Erro", "Erro ao atualizar despesa!")
+                messagebox.showerror("Erro", "Saldo insuficiente para pagar esta despesa!")
     
     def edit_expense_amount(self):
         """Edita o valor da despesa"""
         if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
+            month_year = self.get_current_month_year()
             expenses = self.finance_service.get_expenses(month_year)
             item_index = int(self.selected_expense_item)
             
@@ -488,29 +528,48 @@ class FinanceGUI:
     def edit_expense_due_date(self):
         """Edita a data de vencimento da despesa"""
         if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
+            month_year = self.get_current_month_year()
             expenses = self.finance_service.get_expenses(month_year)
             item_index = int(self.selected_expense_item)
             
             if 0 <= item_index < len(expenses):
                 expense = expenses[item_index]
-                new_due_date = simpledialog.askstring(
-                    "Editar Data de Vencimento", 
-                    f"Nova data de vencimento para {expense.description} (dd/mm):", 
-                    initialvalue=expense.due_date
-                )
-                if new_due_date:
+                
+                # Extrai o dia atual
+                current_day = expense.due_date.split('/')[0] if '/' in expense.due_date else "10"
+                
+                due_date_window = tk.Toplevel(self.root)
+                due_date_window.title("Editar Dia do Vencimento")
+                due_date_window.geometry("300x150")
+                
+                ttk.Label(due_date_window, text="Novo dia do vencimento:").pack(pady=10)
+                
+                day_frame = ttk.Frame(due_date_window)
+                day_frame.pack(pady=5)
+                
+                day_var = tk.StringVar(value=current_day)
+                day_combo = ttk.Combobox(day_frame, textvariable=day_var, width=5, state="readonly")
+                day_combo['values'] = [f"{i:02d}" for i in range(1, 32)]
+                day_combo.pack(side='left', padx=5)
+                
+                ttk.Label(day_frame, text="/mm").pack(side='left')
+                
+                def confirm_new_due_date():
+                    new_due_date = f"{day_var.get()}/mm"
+                    due_date_window.destroy()
                     success = self.finance_service.update_expense_due_date(month_year, item_index, new_due_date)
                     if success:
                         self.update_expenses_display()
                         messagebox.showinfo("Sucesso", "Data de vencimento atualizada!")
                     else:
                         messagebox.showerror("Erro", "Erro ao atualizar data!")
+                
+                ttk.Button(due_date_window, text="Confirmar", command=confirm_new_due_date).pack(pady=10)
     
     def edit_expense_description(self):
         """Edita a descrição da despesa"""
         if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
+            month_year = self.get_current_month_year()
             expenses = self.finance_service.get_expenses(month_year)
             item_index = int(self.selected_expense_item)
             
@@ -532,7 +591,7 @@ class FinanceGUI:
     def delete_expense(self):
         """Exclui uma despesa"""
         if hasattr(self, 'selected_expense_item'):
-            month_year = self.expenses_month_var.get()
+            month_year = self.get_current_month_year()
             expenses = self.finance_service.get_expenses(month_year)
             item_index = int(self.selected_expense_item)
             
@@ -549,9 +608,3 @@ class FinanceGUI:
                         messagebox.showinfo("Sucesso", "Despesa excluída!")
                     else:
                         messagebox.showerror("Erro", "Erro ao excluir despesa!")
-    
-    def on_cards_month_changed(self, event):
-        self.update_cards_display()
-    
-    def on_expenses_month_changed(self, event):
-        self.update_expenses_display()
